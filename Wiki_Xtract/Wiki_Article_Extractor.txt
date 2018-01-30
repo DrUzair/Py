@@ -1,0 +1,136 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import re
+import json
+import pprint
+import wikipedia as wiki
+print('imported successfuly !')
+
+###################################
+def extractEntities(htmlContent):
+    entities = []    
+    for a in htmlContent.find_all('a'):
+        if a.text != None:
+            if a.text.count(' ') > 0:
+                entities.append(a.text)
+    return entities        
+
+def extractWikiArticle(url, phone_name):
+    regex_ref = r'\[\d*\]'
+    html_source = requests.get(url).text
+    soup = BeautifulSoup(html_source, 'lxml')    
+    article_dict = {}
+    print(url)
+    
+    Article_Entities = []
+    # get the first paragraph
+    for p in soup.findAll('p'):                
+        entities = extractEntities(p)
+        for e in entities:
+            Article_Entities.append(e)        
+        p_text = re.sub(regex_ref, "", p.text) # remove references
+        article_dict['Introduction'] = p_text        
+        break # Introduction is supposed to be the first paragraph. test this assumption
+       
+    toc_data = soup.find('div', {'id':'toc', 'class':'toc'})
+    if toc_data == None: # some articles are short and without table to contents
+        for heading in soup.find_all('h2'):
+            print('article without toc')
+            span = heading.find('span', {'class':'mw-headline'})
+            if span == None:
+                continue            
+            h = span.text                        
+            p = heading.find('p')
+            if p != None:
+                p_text = re.sub(regex_ref, "", p.text) # remove references  
+                article_dict[h] = p_text
+                entities = extractEntities(p)
+                for e in entities:
+                    Article_Entities.append(e)
+        article_dict['Entities'] = Article_Entities
+        return article_dict
+    
+    toc_list = toc_data.find('ul')
+    
+    for list_item in toc_list.findAll('li'):
+        toc_number = list_item.find('span',{'class', 'tocnumber'}).text                
+        heading_level = toc_number.count('.') + 2 
+        toc_text = list_item.find('span',{'class', 'toctext'}).text               
+        
+        for heading in soup.find_all('h' + str(heading_level)):
+            span = heading.find('span', {'id':toc_text})
+            if span != None:                        
+                p = heading.find_next('p')                
+                if p != None:
+                    entities = extractEntities(p)
+                    for e in entities:
+                        Article_Entities.append(e)
+                    p_text = re.sub(regex_ref, "", p.text) # remove references
+                    article_dict[toc_text] = p_text        
+    article_dict['Entities'] = Article_Entities
+    return article_dict
+
+def fetchSmartPhoneNames():    
+    android_phones_wiki_url = 'https://en.wikipedia.org/w/index.php?title=Category:Android_(operating_system)_devices&amp%3Bpagefrom=Htc+Wildfire+S%0AHTC+Wildfire+S&pageuntil=Htc+Wildfire+S%0AHTC+Wildfire+S#mw-pages'
+    html_source = requests.get(android_phones_wiki_url).text
+    soup = BeautifulSoup(html_source, "lxml")   
+    div = soup.find('div', {'id':'mw-pages'})   
+    next_page_exists = True
+    next_page_url = ""
+    page_count = 1
+    android_phones = []
+
+    while(next_page_exists):    
+        print('page # ' , page_count)
+        for lists in div.findAll('ul'):        
+            for list_item in lists.findAll('li'):  
+                if list_item.find('a', attrs = {'class':False, 'accesskey':False}):            
+                    a_link = list_item.find('a')            
+                    android_phones.append(a_link['href'])
+
+        for page_element in div.findAll('a', attrs = {'title':"Category:Android (operating system) devices"}):
+            page_element_soup = BeautifulSoup(str(page_element), 'lxml')        
+            if page_element_soup.a.text == 'next page':                        
+                next_page_element = page_element  
+                next_page_url = 'https://en.wikipedia.org' + next_page_element['href']
+                print(next_page_url)
+                next_page_exists = True
+                break
+            else:
+                next_page_exists = False
+       
+        html_source = requests.get(next_page_url).text
+        soup = BeautifulSoup(html_source, "lxml")   
+        div = soup.find('div', {'id':'mw-pages'})       
+        page_count = page_count + 1
+
+    return android_phones
+
+def main():
+    cell_phones = fetchSmartPhoneNames()
+    print(len(cell_phones), ' cell phones')
+    
+    with open('wiki_android_cellphones.csv', 'w', encoding='utf-8') as f:
+        for cell_phone in cell_phones:        
+            f.write(str(cell_phone + '\n'))   
+    f.close()
+    
+    dic = {}
+    for phone in cell_phones:        
+        page_url = 'https://en.wikipedia.org' + phone
+        phone_name = phone[phone.rfind('/')+1:]        
+        print(phone_name)
+        phone_article_dic = extractWikiArticle(page_url, phone_name)
+        if len(phone_article_dic) > 1:
+            phone_article_dic['url'] = page_url
+            dic[phone_name] = phone_article_dic
+        else:
+            print('not available', page_url)               
+        
+    with open('wiki_android_phones_articles.json', 'w') as f:
+        json.dump(dic, f)
+    f.close()
+    
+if __name__ == '__main__':
+    main()
