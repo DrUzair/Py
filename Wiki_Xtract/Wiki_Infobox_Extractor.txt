@@ -1,0 +1,293 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import re
+import json
+import pprint
+import wikipedia as wiki
+print('imported successfuly !')
+
+###################################
+def parseDimensions(line):
+    line = line.replace('\\xe2\\x80\\x93',' ').replace('\\xc3\\x97', ' ')
+    mDic = {'isMM': False, 'isCM' : False, 'isIn' : False}
+    dims = []   
+    if(line.find('\\n') != -1):        
+        segs = line.split('\\n')         
+        #print(line.strip())    
+        for seg in segs:            
+            seg = re.sub(r'^[\D*]?', '',seg)    #remove any starting characters. anticipating a number        
+            isMM = False
+            isCM = False
+            isIN = False
+            ok = re.search(r'(((?:\d*)(?:\.\d*)?)\b)', seg, re.IGNORECASE)            
+            if(ok):                
+                dim = ok.group(0).strip()
+                dims.append(ok.group(0))                
+                resolved = False
+                if(dim.replace('.','',1).isdigit() != False):
+                    if (re.search(r"\b(?=\w)" + re.escape(dim.replace('.','')) + r"\b\s?(mm|millimeters)\b", seg.replace('.',''), re.IGNORECASE)):
+                        mDic['isMM'] = True                                            
+                        resolved = True
+                    if (re.search(r"\b(?=\w)" + re.escape(dim.replace('.','')) + r"\b\s?(cm)\b", seg.replace('.',''), re.IGNORECASE)):
+                        mDic['isCM'] = True
+                        resolved = True
+                    if (re.search(r"\b(?=\w)" + re.escape(dim.replace('.','')) + r"\b\s?(in)\b", seg.replace('.',''), re.IGNORECASE)):
+                        mDic['isIn'] = True                     
+                        resolved = True
+                #if (resolved == True):
+                #    mVal = list(mDic.keys())[list(mDic.values()).index(True)]
+                #else:
+                #    mVal = 'UNRESOLVED'
+        #print(' '.join(dims) + ' ' + ' '.join(mVal))
+    return dims, mDic
+        
+def parseCameraSpec(line):
+    specs = {}
+    
+    line = line.replace('(','').replace(')','').replace('×','x').replace('\\u0445','') # remove parenthesis from (1234x1234)
+    line = re.sub(r'\[\d*\]', "", line) # remove references   
+    ok = re.search(r'(((?:\d+)(?:\.\d*)?)\D*(MP|megapixel(s?)|px|Mps)\b)', line, re.IGNORECASE)
+    
+    MP = 'NA'
+    if(ok):
+        MP = ''.join(d for d in ok.group(1) if (d.isdigit() or d =="."))        
+    
+    resolution = 'NA'
+    ok = re.search(r'\d+\s?[x]\s?\d+', line, re.IGNORECASE)    
+    if(ok):
+        resolution = ok.group(0)                 
+    autofocus = False
+    ok = re.search(r'auto(\s|-)?focus|\bAF\b', line, re.IGNORECASE)
+    if(ok):
+        autofocus = True
+    led = False
+    ok = re.search(r'\b(LED)\b', line, re.IGNORECASE)
+    if(ok):
+        led = True
+    specs['MP'] = str(MP)
+    specs['Res'] = str(resolution)
+    specs['AutoFocus'] = autofocus
+    specs['LED'] = led
+    specs['desc'] = str(line).replace('\u0445','').replace('\u03bc','').replace('\u2660', '')
+    return specs
+
+def extractInfobox(url, phone_name):    
+    dic = {}    
+    dic['phone_name'] = phone_name        
+    html_source = requests.get(url).text.encode('utf-8') # content is already encoded, register it
+    html_source = html_source.decode() # decode it to normal characters    
+    soup = BeautifulSoup(html_source, "lxml")        
+    for table_data in soup.find_all('table', {'class':re.compile(r"infobox hproduct*")}):
+        for table_row in table_data.findAll('tr'):                            
+            ths     = table_row.find_all('th')
+            ths_row = str([elem.text.strip().encode('utf-8') for elem in ths])                            
+            tds     = table_row.find_all('td')
+            tds_row = str([elem.text.strip().encode('utf-8') for elem in tds])                
+            tds_row = re.sub(r'\[\d*\]', "", tds_row) # remove references     
+            
+            if len(ths_row) > 2:  # values without keys (url to image of product)                
+                ths_row = ths_row[3:len(ths_row)-2]       # strip the b'[ and ']          
+                vals_str = tds_row[3:len(tds_row)-2]      # strip the b'[ and ']           
+                vals_str = vals_str.replace('\u0445', '').replace('\\xe3\\x80\\x8a', '').replace('\\xe3\\x80\\x8b', '')
+                if(ths_row == 'Successor' or 
+                   ths_row == 'Predecessor' or 
+                   ths_row == 'Related' or 
+                   ths_row == 'Data inputs' or 
+                   ths_row == 'Input' 
+                  ): # exact name is value of 'a' element. other text is extra (creates mismatch with known models)                                                                                                
+                    if (tds[0].find('a')):                        
+                        successors = tds[0].find_all('a')        
+                        vals = []
+                        for successor in successors:
+                            href = successor['href']
+                            vals.append(href[href.find('wiki/')+5:])                        
+                        dic[ths_row] = vals
+                    else:                        
+                        dic[ths_row] = vals_str.split('\\n')
+                elif(ths_row == 'Dimensions'):
+                    vals_str = vals_str.replace('\\xc2\\xa0', ' ')
+                    dims, mDic = parseDimensions(vals_str)    
+                    if (mDic['isCM'] == True):
+                        map(lambda x: 10*x, dims)
+                    elif(mDic['isIn'] == True):
+                        map(lambda x: 25.4*x, dims)
+                    dic[ths_row] = dims              
+                elif(ths_row in ['Rear camera', 'Camera', 'Front camera']):                        
+                    if (tds[0].text != 'None'):
+                        specs = parseCameraSpec(tds[0].text)                    
+                        dic[ths_row] = specs
+                elif(ths_row == 'Operating system'):
+                    if (tds[0].find('a')):                        
+                        os = tds[0].find_all('a')        
+                        vals = []
+                        if(len(os) == 1): # if there is just one os mentioned then fetch td value                            
+                            vals = [tds[0].text]
+                        else:                                                        
+                            for elem in os:
+                                val = elem.text.strip().replace("\"",'') 
+                                val = re.sub(r'\[\d*\]', "", val) # remove references    
+                                if (val != 'Android' and len(val) > 1):                                 
+                                    vals.append(val)                    
+                        dic[ths_row] = vals
+                    else:                        
+                        dic[ths_row] = [vals_str]                   
+                elif(ths_row == 'Display'):      # multiple values seperated by commas or \n will be listed              
+                    vals_str = vals_str.replace('\\xc2\\xa0', ' ') #replace unicode space with latin space ?
+                    vals_str = vals_str.replace('\\xc3\\x97', 'x') #replace unicode x with latin x ?
+                    vals_str = vals_str.replace('\\xe2\\x80\\x9d', ' inch').replace('\\xe2\\x80\\xb3', ' inch') # replace unicode " with inch
+                    vals_str = vals_str.replace('\\n', ' ') # newline is not really a delimmiter in sampled values # \n coming from html is \\n (2 hours of frustration)                                                   
+                    vals = [vals_str] # if single value then make it an item of list for consisstent parsing later                    
+                    #print(vals_str)
+                    if (',' in vals_str.__str__()):                        
+                        vals = [x.strip() for x in vals_str.split(',')] 
+                    dic[ths_row] = vals
+                elif(ths_row == 'Weight'): 
+                    vals_str = vals_str.replace('\\xc2\\xa0', ' ').replace('\\xe2\\x80\\x93', ' ')                    
+                    ok = re.search(r'(((?:\d*)(?:\.\d*)?)\s?(g|gm|gram|grams|kg|ounces|ounce|oz)\b)', vals_str, re.IGNORECASE)
+                    if (ok):                        
+                        w = ok.group(1)                        
+                        if (w.find('kg') != -1):                            
+                            w = w[:w.find('kg')].strip()
+                            w = str(float(w)*1000) # convert to grams                            
+                        elif(w.rfind('o') != -1):  # rfind in case the gram value is given already                          
+                            w = round(float(w[:w.rfind('o')])/(28.3495),4) 
+                            # in case weight is given only in ounces, convert it to grams
+                        else:                            
+                            w = w[:w.find('g')].strip()                            
+                        dic[ths_row] = w
+                    else:
+                        #print(vals_str + ' --> ' + vals_str)
+                        dic[ths_row] = vals_str # The case of Different by country
+                elif(ths_row == 'Connectivity'):                    
+                    if (tds[0].find('a')):                        
+                        items = tds[0].find_all('a')        
+                        vals = []
+                        for item in items:
+                            href = item['href']                            
+                            if (href.find('wiki/') != -1):
+                                href = href[href.find('wiki/')+5:]                                                            
+                            else:
+                                continue                            
+                            vals.append(href) 
+                        dic[ths_row] = vals
+                    else:
+                        dic[ths_row] = vals_str
+                elif(ths[0].text == 'Compatible networks'):                                        
+                    print(tds[0].text)
+                    if (tds[0].find('a')):                        
+                        items = tds[0].find_all('a')        
+                        vals = []
+                        for item in items:
+                            href = item['href']                            
+                            if (href.find('wiki/') != -1):
+                                href = href[href.find('wiki/')+5:]                                                            
+                            else:
+                                continue                            
+                            vals.append(href) 
+                        dic[ths_row] = vals
+                        print(''.join(vals))
+                    else:
+                        vals_str = vals_str.replace('\\xc2\\xa0', ' ').replace('\\n', '')
+                        dic[ths_row] = vals_str.split('/')
+                else:
+                    vals_str = vals_str.replace('\\xc2\\xa0', ' ')
+                    dic[ths_row] = vals_str
+                   
+                
+    dic['url'] = url    
+    dict2csv(dic, True)    
+    return dic    
+   
+def fetchSmartPhoneNames():    
+    android_phones_wiki_url = 'https://en.wikipedia.org/w/index.php?title=Category:Android_(operating_system)_devices&amp%3Bpagefrom=Htc+Wildfire+S%0AHTC+Wildfire+S&pageuntil=Htc+Wildfire+S%0AHTC+Wildfire+S#mw-pages'
+    html_source = requests.get(android_phones_wiki_url).text    
+    soup = BeautifulSoup(html_source, "lxml")   
+    div = soup.find('div', {'id':'mw-pages'})   
+    next_page_exists = True
+    next_page_url = ""
+    page_count = 1
+    android_phones = []
+
+    while(next_page_exists):    
+        print('page # ' , page_count)
+        for lists in div.findAll('ul'):        
+            for list_item in lists.findAll('li'):  
+                if list_item.find('a', attrs = {'class':False, 'accesskey':False}):            
+                    a_link = list_item.find('a')            
+                    android_phones.append(a_link['href'])
+
+        for page_element in div.findAll('a', attrs = {'title':"Category:Android (operating system) devices"}):
+            page_element_soup = BeautifulSoup(str(page_element), 'lxml')        
+            if page_element_soup.a.text == 'next page':                        
+                next_page_element = page_element  
+                next_page_url = 'https://en.wikipedia.org' + next_page_element['href']
+                print(next_page_url)
+                next_page_exists = True
+                break
+            else:
+                next_page_exists = False
+       
+        html_source = requests.get(next_page_url).text
+        soup = BeautifulSoup(html_source, "lxml")   
+        div = soup.find('div', {'id':'mw-pages'})       
+        page_count = page_count + 1
+
+    return android_phones
+
+def main():
+    if(False):        
+        with open('wiki_android_phones_data.json', 'r') as f:
+            dic = json.load(f)
+        f.close()
+        for phone in dic:
+            file = open("C:\\RnD\\Dev\\wikipedia_extraction\\dimensions.txt", "a") 
+            if ('Dimensions' in dic[phone].keys()):
+                print(dic[phone]['Dimensions'])   
+                file.write(dic[phone]['Dimensions'] +'\n') 
+            file.close()
+    else:                   
+        cell_phones = fetchSmartPhoneNames()
+        print(len(cell_phones), ' cell phones')
+
+        with open('wiki_android_cellphones.csv', 'w', encoding='utf-8') as f:
+            for cell_phone in cell_phones:        
+                f.write(str(cell_phone + '\n'))   
+        f.close()
+
+        dic = {}
+        count = 1
+        for phone in cell_phones:        
+            page_url = 'https://en.wikipedia.org' + phone
+            phone_name = phone[phone.rfind('/')+1:]        
+
+            #if (phone_name == 'Samsung_Galaxy_Note_Edge'):
+            #    print(phone_name)
+            #    phone_info_dic = extractInfobox(page_url, phone_name)
+            #else:
+            #    continue
+            #print(phone_name.replace('_', ' '))
+            phone_info_dic = extractInfobox(page_url, phone_name)
+
+            if len(phone_info_dic) > 1:
+                dic[phone_name] = phone_info_dic
+            else:
+                print('not available', page_url)        
+
+            count = count + 1
+            #if (count > 100):            
+            #    break
+
+        with open('wiki_android_phones_data.json', 'w') as f:
+            json.dump(dic, f)
+        f.close()
+
+def dict2csv(dict, header):    
+    with open('wiki_android_phones_data.csv', 'a',  newline='') as f:  # Just use 'w' mode in 3.x
+        w = csv.DictWriter(f, dict.keys())
+        if header == True:
+            w.writeheader()
+        w.writerow(dict)
+        
+if __name__ == '__main__':
+    main()
