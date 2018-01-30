@@ -1,0 +1,47 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import re
+import json
+import pprint
+import wikipedia as wiki
+print('imported successfuly !')
+
+#########################
+android_phones_wiki_url = 'https://en.wikipedia.org/w/index.php?title=Category:Android_(operating_system)_devices&amp%3Bpagefrom=Htc+Wildfire+S%0AHTC+Wildfire+S&pageuntil=Htc+Wildfire+S%0AHTC+Wildfire+S#mw-pages'
+html_source = requests.get(android_phones_wiki_url).text
+soup = BeautifulSoup(html_source, "lxml")   
+div = soup.find('div', {'id':'mw-pages'})   
+next_page_exists = True
+next_page_url = ""
+page_count = 1
+android_phones = []
+    
+while(next_page_exists):    
+    print('page # ' , page_count)
+    for lists in div.findAll('ul'):        
+        for list_item in lists.findAll('li'):  
+            if list_item.find('a', attrs = {'class':False, 'accesskey':False}):            
+                a_link = list_item.find('a')            
+                android_phones.append(a_link['href'])
+    
+    for page_element in div.findAll('a', attrs = {'title':"Category:Android (operating system) devices"}):
+        page_element_soup = BeautifulSoup(str(page_element), 'lxml')        
+        if page_element_soup.a.text == 'next page':                        
+            next_page_element = page_element  
+            next_page_url = 'https://en.wikipedia.org' + next_page_element['href']
+            print(next_page_url)
+            next_page_exists = True
+            break
+        else:
+            next_page_exists = False
+       
+    html_source = requests.get(next_page_url).text
+    soup = BeautifulSoup(html_source, "lxml")   
+    div = soup.find('div', {'id':'mw-pages'})       
+    page_count = page_count + 1
+        
+###########################################          
+
+
+    
