@@ -19,4 +19,4 @@ plt.savefig('plot.jpg')
 ```
 https://github.com/DrUzair/Py/tree/master/images
 
-![Screenshot](../images/lineplot.png)
+![Screenshot](https://github.com/DrUzair/Py/blob/master/images/lineplot.jpg)
