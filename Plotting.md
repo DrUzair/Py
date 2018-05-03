@@ -17,4 +17,6 @@ plt.legend(loc='best') # 'upper left' 'upper right'
 plt.show()
 plt.savefig('plot.jpg')
 ```
-![Screenshot](../master/images/lineplot.png)
+https://github.com/DrUzair/Py/tree/master/images
+
+![Screenshot](../tree/master/images/lineplot.png)
