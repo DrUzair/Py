@@ -17,6 +17,6 @@ plt.legend(loc='best') # 'upper left' 'upper right'
 plt.show()
 plt.savefig('plot.jpg')
 ```
-https://github.com/DrUzair/Py/tree/master/images
-
 ![Screenshot](https://github.com/DrUzair/Py/blob/master/images/lineplot.jpg)
+
+# Boxplot
