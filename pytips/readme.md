@@ -1,4 +1,4 @@
-
+## unique elements in a list
 ```py
 alist = [1 ,1, 2, 2, 2, 2, 3]
 xlist = []
