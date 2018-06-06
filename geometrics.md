@@ -1,5 +1,6 @@
 # Rectangle intersection/overlap
-'''py
+
+```py
 def bbox_overlap(bbox1, bbox2):
     if (
         (bbox1['right_max'] >= bbox2['left_min'] ) and
@@ -25,4 +26,4 @@ bbox2 = {
      }
 
 print(bbox_overlap(bbox1, bbox2))
-'''
+```
