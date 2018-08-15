@@ -7,5 +7,8 @@ conda install -c anaconda mkl
 ```shell
 conda install -c pytorch pytorch torchvision
 ```
-## [TorchVision](https://pytorch.org/docs/stable/torchvision/index.html}
-
+## [TorchVision](https://pytorch.org/docs/stable/torchvision/index.html)
+consists of popular datasets, model architectures, and common image transformations for computer vision
+```shell
+conda install -c torchvision
+```
