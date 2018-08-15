@@ -7,3 +7,5 @@ conda install -c anaconda mkl
 ```shell
 conda install -c pytorch pytorch torchvision
 ```
+## [TorchVision](https://pytorch.org/docs/stable/torchvision/index.html}
+
