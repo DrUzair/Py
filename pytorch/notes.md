@@ -1,5 +1,5 @@
 # Installation
-## Math Kernel Library (MKL) [https://software.intel.com/en-us/mkl]
+## Math Kernel Library [MKL](https://software.intel.com/en-us/mkl)
 ```shell
 conda install -c anaconda mkl
 ```
