@@ -1,4 +1,4 @@
-'''py
+```py
 from flask import Flask
 from flask_restful import Resource, reqparse, Api
 import json, csv
@@ -29,4 +29,4 @@ if __name__ == "__main__":
     api.add_resource(AI_Server, '/submit')
     app.debug = True
     app.run(debug=app, host='xx.xxx.xxx.xx', port=2020, use_reloader=False)
-'''
+```
