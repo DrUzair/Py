@@ -6,3 +6,8 @@ cd Python-3.4.5/
 ./configure
 sudo make altinstall
 ```
+
+- add alias to .bashrc
+```shell
+alias python=Python-3.4.5/python
+```
